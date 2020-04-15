@@ -95,57 +95,54 @@ plotMA.label <- function(res,
 }
 
 ui <- fluidPage(
-    # take parameters that will be passed to plotMA.label
-    # using Shiny
+                # take parameters that will be passed to plotMA.label
+                # using Shiny
 
-    # side bar
-    sidebarPanel(
-      numericInput("fdr.thres", label = h3("FDR threshold"), value = 0.01),
-      numericInput("fc.thres", label = h3("log2FoldChange threshold"), value = 0),
-      sliderInput("fc.lim", label=h3("log2FoldChange limits"),
-                  min=-20, max=20, value=c(-5,5)),
-      textInput("genes.to.label",
-    	  label = h3("Genes to label (comma-separated symbols)"),
-    	  value = "SPP1, SMAD3, NFKB1"),
-      h3("Genes from click"),
-      tags$style(type='text/css', '#clickgenes {background-color:white; color:red; border:2px solid white;}'),
-      textOutput("clickgenes"), br(),
-      actionButton("reset.clickgenes", label='Reset')),
+                # side bar
+                sidebarPanel(
+                             numericInput("fdr.thres", label = h3("FDR threshold"), value = 0.01),
+                             numericInput("fc.thres", label = h3("log2FoldChange threshold"), value = 0),
+                             sliderInput("fc.lim", label=h3("log2FoldChange limits"),
+                                         min=-20, max=20, value=c(-5,5)),
 
-    # main panel
-    mainPanel(
-      # Choose file with DE results
-      fileInput('res.file', label=h2('Upload file')),
+                             textInput("genes.to.label",
+                                       label = h3("Genes to label (comma-separated symbols)"),
+                                       value = "SPP1, SMAD3, NFKB1"),
 
-      plotOutput('maplot', height='800px', brush='plot_brush', click='plot_click'),
-      downloadButton('maplot_download', label = 'Download plot'),
-      fluidRow(
-        column(10, dataTableOutput('table'))
-      ))
-  )
+                             h3("Genes from click"),
+                             tags$style(type='text/css', '#clickgenes {background-color:white; color:red; border:2px solid white;}'),
+                             textOutput("clickgenes"), br(),
+                             actionButton("reset.clickgenes", label='Reset')),
+
+               # main panel
+               mainPanel(
+                         # Choose file with DE results
+                         fileInput('res.file', label=h2('Upload file')),
+
+                         plotOutput('maplot', height='800px', brush='plot_brush', click='plot_click'),
+                         downloadButton('maplot_download', label = 'Download plot'),
+                         fluidRow(
+                                  column(10, dataTableOutput('table'))
+                                  ))
+)
 
 server <- function(input, output, session){
     genes.to.label <- reactive({
-            toupper(unlist(strsplit(input$genes.to.label, '\\,\\s*')))
+      toupper(unlist(strsplit(input$genes.to.label, '\\,\\s*')))
     })
-
+    
     # reactive element that returns table
     res.raw <- reactive({
       if(is.null(input$res.file)) return(NULL)
       return(read.table(input$res.file$datapath, sep='\t',
                         header=TRUE, row.names=1, quote=''))
     })
-
+    
     # reactiveValue
     # initialized to point outside plot limits
-    #coords <- reactiveValues(xy=data.frame(x=c(min(res$baseMean) - 0.5), y=c(0)))
-    #coords <- reactiveValues(x=min(res$baseMean) - 0.5, y=0)
     coords <- reactiveValues(x=0, y=0)
-
+    
     # observe plot click and update accordingly
-    #observeEvent(input$plot_click, {
-    #  coords$xy[1,] <- c(input$plot_click$x, input$plot_click$y)
-    #})
     observe({
       input$plot_click
       isolate({
@@ -153,46 +150,42 @@ server <- function(input, output, session){
         coords$y <- c(coords$y, input$plot_click$y)
       })
     })
-
-    #plot.clicks <- reactiveValues(c(input$plot_click, input$reset.clickgenes))
-
+  
     # get gene name(s) nearest to plot click
     genes.from.click <- eventReactive({
       input$plot_click
       input$reset.clickgenes
     }, {
       if(!is.null(input$plot_brush)) return(NULL)
-      #click.x <- coords$xy[1,1]
-      #click.y <- coords$xy[1,2]
       res <- res.raw()
       genes <- NULL
       for(i in 1:length(coords$x)){
         click.x <- coords$x[i]
         click.y <- coords$y[i]
-
+        
         # adaptive xdel since it is on a log10 scale
         if(click.x != 1){
           xdel <- 0.1*(10^(ceiling(log10(click.x))))
         } else {
           xdel <- 1
         }
-
-        # ydel is 5% of visible range of log2FoldChange
+        
+        # ydel is 2% of visible range of log2FoldChange
         ydel <- 0.02*min(diff(input$fc.lim),
                          diff(range(res$log2FoldChange, na.rm=TRUE)))
-
+        
         # get filtered indices in area: click coordinates with wiggle room
         idx.x <- res$baseMean > (click.x - xdel) & res$baseMean < (click.x + xdel)
         idx.y <- res$log2FoldChange > (click.y - ydel) & res$log2FoldChange < (click.y + ydel)
-
+        
         # labels are symbols. If symbol = NA, then label=rowname
         labels <- as.character(res$symbol)
         labels[is.na(labels)] <- rownames(res)[is.na(labels)]
-
+        
         # get genes within area of interest
         idx <- idx.x & idx.y
         g <- labels[idx]
-
+        
         # find closest point, return first for ties
         if(length(g) > 1){
           df.subset <- res[idx,]
@@ -200,20 +193,15 @@ server <- function(input, output, session){
           y.dist <- df.subset$log2FoldChange - click.y
           total.dist <- x.dist^2 + y.dist^2
           min.idx <- which(total.dist == min(total.dist))
-
+          
           genes <- c(genes, g[min.idx][1])
-          #if(sum(min.idx) > 1){
-          #  return(g[min.idx][1])
-          #} else {
-          #  return(g[min.idx])
-          #}
         } else {
           genes <- c(genes, g)
         }
       }
       return(genes)
     }, ignoreNULL = FALSE)
-
+    
     # maintain list of genes from click
     output$clickgenes <- renderText({
       g <- genes.from.click()
@@ -223,13 +211,13 @@ server <- function(input, output, session){
         return(paste(g[!is.na(g)], collapse=', '))
       }
     })
-
+    
     # reset click genes
     observeEvent(input$reset.clickgenes, {
       coords$x <- 0
       coords$y <- 0
     })
-
+    
     # reactive element to generate MA plot
     maplot <- reactive({
       if(!is.null(input$res.file)){
@@ -243,23 +231,23 @@ server <- function(input, output, session){
                                          genes.from.click()))
       p + theme(text=element_text(size=20))
     })
-
+    
     # element to output MA plot
     output$maplot <- renderPlot({
-                        if(is.null(input$res.file)) return(NULL)
-                        maplot()
-
-                        # zoom into brushed area
-                        #if(!is.null(input$plot_brush)){
-                        #  coords <- input$plot_brush
-                        #  p + xlim(coords$xmin, coords$xmax) +
-                        #    ylim(coords$ymin, coords$ymax) +
-                        #    scale_x_log10()
-                        #} else {
-                        #  p
-                        #}
+      if(is.null(input$res.file)) return(NULL)
+      maplot()
+      
+      # zoom into brushed area
+      #if(!is.null(input$plot_brush)){
+      #  coords <- input$plot_brush
+      #  p + xlim(coords$xmin, coords$xmax) +
+      #    ylim(coords$ymin, coords$ymax) +
+      #    scale_x_log10()
+      #} else {
+      #  p
+      #}
     })
-
+    
     # download button for plot
     output$maplot_download <- downloadHandler(
       filename = function(){
@@ -269,7 +257,7 @@ server <- function(input, output, session){
         ggsave(file, maplot(), width=12, height=10)
       }
     )
-
+    
     # output data table of selected area
     output$table <- renderDataTable({
       if(is.null(input$plot_brush)) return(NULL)
